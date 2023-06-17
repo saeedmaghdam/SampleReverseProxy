@@ -1,10 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+<Project Sdk="Microsoft.NET.Sdk.Worker">
 
 	<PropertyGroup>
 		<TargetFramework>net6.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
-		<UserSecretsId>dotnet-SampleReverseProxy.Client-3519bf45-bbbb-4d4a-8480-9d2b1fd86146</UserSecretsId>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -25,4 +24,5 @@
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
+
 </Project>
