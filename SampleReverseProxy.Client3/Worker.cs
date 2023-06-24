@@ -1,6 +1,9 @@
 using HeyRed.Mime;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using SharpCompress.Archives;
+using SharpCompress.Common;
+using System.ComponentModel.Design;
 using System.IO.Compression;
 using System.Net;
 using System.Text;
@@ -13,7 +16,7 @@ namespace SampleReverseProxy.Client3
     {
         private const string RequestQueueName = "requests";
         private const string ResponseQueueName = "responses";
-        private static readonly Uri TargetApplicationUri = new Uri("https://openai.com/"); // Specify the URL of the target application
+        private static readonly Uri TargetApplicationUri = new Uri("https://aghdam.nl/"); // Specify the URL of the target application
 
         private IModel _channel;
 
@@ -97,24 +100,106 @@ namespace SampleReverseProxy.Client3
 
         private async Task<HttpResponseModel> ForwardRequestToTargetApplication(IDictionary<string, string> targetRequestDetails)
         {
-            var targetRequestUri = new Uri(TargetApplicationUri, targetRequestDetails["Path"]);
+            var path = targetRequestDetails["Path"];
 
             var handler = new HttpClientHandler();
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12; // Adjust the SSL/TLS protocol version as needed
 
             using var httpClient = new HttpClient(handler);
 
+            var targetRequestMessage = CreateHttpRequestMessage(targetRequestDetails);
+
+            HttpResponseMessage response = null;
+
+            do
+            {
+                response = await httpClient.SendAsync(targetRequestMessage, HttpCompletionOption.ResponseContentRead);
+
+                if (response.StatusCode == HttpStatusCode.Redirect || response.StatusCode == HttpStatusCode.MovedPermanently)
+                {
+                    var redirectUrl = response.Headers.Location;
+
+                    targetRequestMessage = CreateHttpRequestMessage(targetRequestDetails);
+                    targetRequestMessage.RequestUri = redirectUrl;
+                    targetRequestMessage.Method = HttpMethod.Get; // Follow the redirect with a GET request
+                }
+            } while (response.StatusCode == HttpStatusCode.Redirect || response.StatusCode == HttpStatusCode.MovedPermanently);
+
+            //int maxRedirects = 20; // Maximum number of allowed redirects
+            //int redirectCount = 0; // Counter for tracking the number of redirects
+            //do
+            //{
+            //    response = await httpClient.SendAsync(targetRequestMessage, HttpCompletionOption.ResponseContentRead);
+
+            //    if (response.StatusCode == HttpStatusCode.Redirect || response.StatusCode == HttpStatusCode.MovedPermanently)
+            //    {
+            //        if (redirectCount >= maxRedirects)
+            //        {
+            //            // Reached the maximum number of allowed redirects
+            //            throw new InvalidOperationException("Exceeded maximum number of redirects.");
+            //        }
+
+            //        var redirectUrl = response.Headers.Location;
+
+            //        targetRequestMessage = CreateHttpRequestMessage(targetRequestDetails);
+            //        targetRequestMessage.RequestUri = redirectUrl;
+            //        targetRequestMessage.Method = HttpMethod.Get; // Follow the redirect with a GET request
+
+            //        // Increment the redirect counter
+            //        redirectCount++;
+            //    }
+            //} while (response.StatusCode == HttpStatusCode.Redirect || response.StatusCode == HttpStatusCode.MovedPermanently);
+
+            var httpResponse = new HttpResponseModel();
+            httpResponse.ContentType = response.Content.Headers.ContentType.MediaType;
+            httpResponse.Headers = response.Headers.ToDictionary(h => h.Key, h => h.Value);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                httpResponse.HttpStatusCode = response.StatusCode;
+                httpResponse.IsSuccessStatusCode = false;
+                return httpResponse;
+            }
+
+            response.EnsureSuccessStatusCode();
+            httpResponse.IsSuccessStatusCode = true;
+
+            // Read the response content as bytes
+            byte[] contentBytes = await response.Content.ReadAsByteArrayAsync();
+
+            // Decompress the byte array
+            byte[] decompressedBytes = await Decompress(response, contentBytes, httpResponse);
+
+            if (path == "/")
+            {
+                var responseContent = Encoding.UTF8.GetString(decompressedBytes);
+                responseContent = Regex.Replace(responseContent, TargetApplicationUri.Authority, "localhost:7200");
+                httpResponse.Bytes = Encoding.UTF8.GetBytes(responseContent);
+            }
+            else
+            {
+                httpResponse.Bytes = decompressedBytes;
+            }
+
+            return httpResponse;
+        }
+
+        private HttpRequestMessage CreateHttpRequestMessage(IDictionary<string, string> targetRequestDetails)
+        {
+            var targetRequestDetailsCopy = new Dictionary<string, string>(targetRequestDetails);
+            var targetRequestUri = new Uri(TargetApplicationUri, targetRequestDetailsCopy["Path"]);
+
             var targetRequestMessage = new HttpRequestMessage()
             {
-                Method = new HttpMethod(targetRequestDetails["Method"]),
+                Method = new HttpMethod(targetRequestDetailsCopy["Method"]),
                 RequestUri = targetRequestUri,
             };
 
             // Set headers from target request details
-            targetRequestDetails.Remove("Method");
-            targetRequestDetails.Remove("Path");
+            targetRequestDetailsCopy.Remove("Method");
+            targetRequestDetailsCopy.Remove("Path");
 
-            foreach (var kvp in targetRequestDetails)
+            foreach (var kvp in targetRequestDetailsCopy)
             {
                 if (kvp.Key.Equals("Host", StringComparison.OrdinalIgnoreCase))
                 {
@@ -126,90 +211,72 @@ namespace SampleReverseProxy.Client3
                 }
             }
 
-            HttpResponseMessage response = null;
+            return targetRequestMessage;
+        }
 
-            do
+        private async Task<byte[]> Decompress(HttpResponseMessage response, byte[] compressedBytes, HttpResponseModel httpResponse)
+        {
+            var contentEncoding = response.Content.Headers.ContentEncoding.FirstOrDefault();
+
+            if (contentEncoding == null)
             {
-                response = await httpClient.SendAsync(targetRequestMessage);
-
-                if (response.StatusCode == HttpStatusCode.Redirect || response.StatusCode == HttpStatusCode.MovedPermanently)
-                {
-                    var redirectUrl = response.Headers.Location;
-                    targetRequestMessage.RequestUri = redirectUrl;
-                    targetRequestMessage.Method = HttpMethod.Get; // Follow the redirect with a GET request
-                }
-            } while (response.StatusCode == HttpStatusCode.Redirect || response.StatusCode == HttpStatusCode.MovedPermanently);
-
-            // Read the response content as bytes
-            byte[] contentBytes = await response.Content.ReadAsByteArrayAsync();
-            var responseContent = default(string);
-
-            string contentType = response.Content.Headers.ContentType.MediaType;
-
-            var httpResponse = new HttpResponseModel();
-            httpResponse.ContentType = contentType;
-            httpResponse.Headers = response.Headers.ToDictionary(h => h.Key, h => h.Value);
-
-            if (contentType != "text/html" && !(new List<string>() { "image/jpg", "text/css", "text/javascript" }.Contains(contentType)))
-            {
-                httpResponse.Bytes = contentBytes;
-                return httpResponse;
+                return compressedBytes;
             }
-
-            if (response.Content.Headers.ContentEncoding.Contains("gzip"))
+            else if (contentEncoding == "deflate")
             {
-                using (var stream = new System.IO.Compression.GZipStream(new MemoryStream(contentBytes), CompressionMode.Decompress))
+                using (Stream compressedStream = await response.Content.ReadAsStreamAsync())
                 {
-                    // Read the decompressed content
-                    byte[] decompressedBytes = new byte[contentBytes.Length * 2]; // Adjust the buffer size if needed
-                    int bytesRead = await stream.ReadAsync(decompressedBytes, 0, decompressedBytes.Length);
-
-                    // Decode the bytes using the appropriate encoding
-                    responseContent = Encoding.UTF8.GetString(decompressedBytes, 0, bytesRead); // Adjust the encoding if needed
+                    using (DeflateStream deflateStream = new DeflateStream(compressedStream, CompressionMode.Decompress))
+                    {
+                        using (MemoryStream decompressedStream = new MemoryStream())
+                        {
+                            await deflateStream.CopyToAsync(decompressedStream);
+                            return decompressedStream.ToArray();
+                        }
+                    }
                 }
             }
-            else if (response.Content.Headers.ContentEncoding.Contains("br"))
+            else if (contentEncoding == "br")
             {
-                using (MemoryStream stream = new MemoryStream(contentBytes))
+                using (Stream compressedStream = await response.Content.ReadAsStreamAsync())
                 {
-                    // Decompress the content using Brotli.NET library
-                    BrotliStream brotliStream = new BrotliStream(stream, CompressionMode.Decompress);
-                    byte[] decompressedBytes = new byte[contentBytes.Length * 10]; // Adjust the buffer size if needed
-                    int bytesRead = brotliStream.Read(decompressedBytes, 0, decompressedBytes.Length);
-
-                    // Decode the bytes using the appropriate encoding
-                    responseContent = Encoding.UTF8.GetString(decompressedBytes, 0, bytesRead); // Adjust the encoding if needed
+                    using (BrotliStream brotliStream = new BrotliStream(compressedStream, CompressionMode.Decompress))
+                    {
+                        using (MemoryStream decompressedStream = new MemoryStream())
+                        {
+                            await brotliStream.CopyToAsync(decompressedStream);
+                            return decompressedStream.ToArray();
+                        }
+                    }
                 }
             }
             else
             {
-                // If the response is not compressed, decode it directly
-                responseContent = Encoding.UTF8.GetString(contentBytes); // Adjust the encoding if needed
+                using (MemoryStream compressedStream = new MemoryStream(compressedBytes))
+                {
+                    IArchive archive = ArchiveFactory.Open(compressedStream);
+
+                    foreach (IArchiveEntry entry in archive.Entries)
+                    {
+                        if (!entry.IsDirectory)
+                        {
+                            using (MemoryStream entryStream = new MemoryStream())
+                            {
+                                //entry.WriteTo(entryStream, new ExtractionOptions { ExtractFullPath = false, Overwrite = true });
+                                entry.WriteTo(entryStream);
+
+                                // Decompressed data as byte array
+                                byte[] decompressedData = entryStream.ToArray();
+
+                                return decompressedData;
+                            }
+                        }
+                    }
+                }
             }
 
-            responseContent = Regex.Replace(responseContent, TargetApplicationUri.Authority, "localhost:7200");
-
-            httpResponse.Bytes = Encoding.UTF8.GetBytes(responseContent);
-            return httpResponse;
-            //return await response.Content.ReadAsStringAsync();
-        }
-
-        private string GetFileExtension(string contentType)
-        {
-            string fileExtension = MimeTypesMap.GetExtension(contentType);
-
-            if (!string.IsNullOrEmpty(fileExtension))
-            {
-                return fileExtension.StartsWith(".") ? fileExtension : "." + fileExtension;
-            }
-
-            return ".dat"; // Default file extension if content type is unknown
-        }
-
-        private bool IsFileType(string contentType)
-        {
-            string fileExtension = MimeTypesMap.GetExtension(contentType);
-            return !string.IsNullOrEmpty(fileExtension);
+            // No supported compression method found
+            throw new InvalidOperationException("Unsupported compression method.");
         }
     }
 }

@@ -41,30 +41,50 @@ namespace SampleReverseProxy.Server3
             {
                 var response = await responseTask;
 
-                var contentType = "image/jpeg";
-
-                if (context.Request.Path != "/")
+                if (!response.IsSuccessStatusCode)
                 {
-                    if (response.Bytes != null && response.Bytes.Length > 0)
-                    {
-                        // Create a memory stream from the byte array
-                        var memoryStream = new MemoryStream(response.Bytes);
-
-                        // Set the response headers
-                        context.Response.ContentType = response.ContentType;
-                        context.Response.ContentLength = memoryStream.Length;
-
-                        // Write the image content to the response stream
-                        await memoryStream.CopyToAsync(context.Response.Body);
-
-                        // Close the memory stream
-                        memoryStream.Close();
-                    }
+                    context.Response.StatusCode = (int)response.HttpStatusCode;
                 }
                 else
                 {
                     context.Response.ContentType = response.ContentType;
-                    await context.Response.WriteAsync(Encoding.UTF8.GetString(response.Bytes));
+                    context.Response.Headers.Add("Content-Encoding", "UTF-8");
+                    foreach (var header in response.Headers)
+                    {
+                        if (header.Key == "Content-Encoding")
+                            continue;
+
+                        foreach (var headerValue in header.Value)
+                        {
+                            if (!context.Response.Headers.ContainsKey(header.Key))
+                                context.Response.Headers.Add(header.Key, headerValue);
+                            else
+                                context.Response.Headers.Append(header.Key, headerValue);
+                        }
+                    }
+
+                    if (new List<string>() { "image/jpg", "image/jpeg", "text/css", "text/javascript", "application/javascript" }.Contains(context.Response.ContentType))
+                    {
+                        if (response.Bytes != null && response.Bytes.Length > 0)
+                        {
+                            // Create a memory stream from the byte array
+                            var memoryStream = new MemoryStream(response.Bytes);
+
+                            // Set the response headers
+                            context.Response.ContentType = response.ContentType;
+                            context.Response.ContentLength = memoryStream.Length;
+
+                            // Write the image content to the response stream
+                            await memoryStream.CopyToAsync(context.Response.Body);
+
+                            // Close the memory stream
+                            memoryStream.Close();
+                        }
+                    }
+                    else
+                    {
+                        await context.Response.WriteAsync(Encoding.UTF8.GetString(response.Bytes));
+                    }
                 }
             }
             else
@@ -112,12 +132,6 @@ namespace SampleReverseProxy.Server3
 
                 return requestBuilder.ToString();
             }
-        }
-
-        private bool IsFileType(string contentType)
-        {
-            string fileExtension = MimeTypesMap.GetExtension(contentType);
-            return !string.IsNullOrEmpty(fileExtension);
         }
     }
 }
