@@ -41,28 +41,28 @@ namespace SampleReverseProxy.Server3
             {
                 var response = await responseTask;
 
+                context.Response.ContentType = response.ContentType;
+                context.Response.Headers.Add("Content-Encoding", "UTF-8");
+                foreach (var header in response.Headers)
+                {
+                    if (header.Key == "Content-Encoding")
+                        continue;
+
+                    foreach (var headerValue in header.Value)
+                    {
+                        if (!context.Response.Headers.ContainsKey(header.Key))
+                            context.Response.Headers.Add(header.Key, headerValue);
+                        else
+                            context.Response.Headers.Append(header.Key, headerValue);
+                    }
+                }
+
                 if (!response.IsSuccessStatusCode)
                 {
                     context.Response.StatusCode = (int)response.HttpStatusCode;
                 }
                 else
                 {
-                    context.Response.ContentType = response.ContentType;
-                    context.Response.Headers.Add("Content-Encoding", "UTF-8");
-                    foreach (var header in response.Headers)
-                    {
-                        if (header.Key == "Content-Encoding")
-                            continue;
-
-                        foreach (var headerValue in header.Value)
-                        {
-                            if (!context.Response.Headers.ContainsKey(header.Key))
-                                context.Response.Headers.Add(header.Key, headerValue);
-                            else
-                                context.Response.Headers.Append(header.Key, headerValue);
-                        }
-                    }
-
                     if (new List<string>() { "image/jpg", "image/jpeg", "text/css", "text/javascript", "application/javascript" }.Contains(context.Response.ContentType))
                     {
                         if (response.Bytes != null && response.Bytes.Length > 0)
