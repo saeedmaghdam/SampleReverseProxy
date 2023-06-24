@@ -25,7 +25,7 @@ namespace SampleReverseProxy.Server3
             var requestID = Guid.NewGuid().ToString();
 
             // Create a TaskCompletionSource to await the response
-            var responseCompletionSource = new TaskCompletionSource<byte[]>();
+            var responseCompletionSource = new TaskCompletionSource<HttpResponseModel>();
 
             // Store the response completion source in a dictionary or cache
             StoreResponseCompletionSource(requestID, responseCompletionSource);
@@ -45,13 +45,13 @@ namespace SampleReverseProxy.Server3
 
                 if (context.Request.Path != "/")
                 {
-                    if (response != null && response.Length > 0)
+                    if (response.Bytes != null && response.Bytes.Length > 0)
                     {
                         // Create a memory stream from the byte array
-                        var memoryStream = new MemoryStream(response);
+                        var memoryStream = new MemoryStream(response.Bytes);
 
                         // Set the response headers
-                        context.Response.ContentType = contentType;
+                        context.Response.ContentType = response.ContentType;
                         context.Response.ContentLength = memoryStream.Length;
 
                         // Write the image content to the response stream
@@ -63,8 +63,8 @@ namespace SampleReverseProxy.Server3
                 }
                 else
                 {
-                    context.Response.ContentType = "text/html";
-                    await context.Response.WriteAsync(Encoding.UTF8.GetString(response));
+                    context.Response.ContentType = response.ContentType;
+                    await context.Response.WriteAsync(Encoding.UTF8.GetString(response.Bytes));
                 }
             }
             else
@@ -86,7 +86,7 @@ namespace SampleReverseProxy.Server3
             channel.BasicPublish(exchange: "", routingKey: RequestQueueName, basicProperties: properties, body: Encoding.UTF8.GetBytes(requestData));
         }
 
-        private void StoreResponseCompletionSource(string requestID, TaskCompletionSource<byte[]> responseCompletionSource)
+        private void StoreResponseCompletionSource(string requestID, TaskCompletionSource<HttpResponseModel> responseCompletionSource)
         {
             // Store the response completion source in a dictionary or cache based on requestID
             _responseCompletionSources.Sources.TryAdd(requestID, responseCompletionSource);

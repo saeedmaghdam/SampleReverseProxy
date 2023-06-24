@@ -4,6 +4,7 @@ using RabbitMQ.Client.Events;
 using System.IO.Compression;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace SampleReverseProxy.Client3
@@ -35,12 +36,13 @@ namespace SampleReverseProxy.Client3
 
                 // Forward the request to the target application
                 var response = await ForwardRequestToTargetApplication(targetRequestDetails);
+                var responseBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(response));
 
                 // Publish the response to RabbitMQ
                 var responseProperties = _channel.CreateBasicProperties();
                 responseProperties.MessageId = requestID;
 
-                _channel.BasicPublish(exchange: "", routingKey: ResponseQueueName, basicProperties: responseProperties, body: response);
+                _channel.BasicPublish(exchange: "", routingKey: ResponseQueueName, basicProperties: responseProperties, body: responseBytes);
 
                 _channel.BasicAck(ea.DeliveryTag, false);
             };
@@ -93,7 +95,7 @@ namespace SampleReverseProxy.Client3
             throw new ArgumentException("Invalid request data.");
         }
 
-        private async Task<byte[]> ForwardRequestToTargetApplication(IDictionary<string, string> targetRequestDetails)
+        private async Task<HttpResponseModel> ForwardRequestToTargetApplication(IDictionary<string, string> targetRequestDetails)
         {
             var targetRequestUri = new Uri(TargetApplicationUri, targetRequestDetails["Path"]);
 
@@ -144,9 +146,16 @@ namespace SampleReverseProxy.Client3
 
             string contentType = response.Content.Headers.ContentType.MediaType;
 
-            if (contentType != "text/html" && IsFileType(contentType))
-                return contentBytes;
-            
+            var httpResponse = new HttpResponseModel();
+            httpResponse.ContentType = contentType;
+            httpResponse.Headers = response.Headers.ToDictionary(h => h.Key, h => h.Value);
+
+            if (contentType != "text/html" && !(new List<string>() { "image/jpg", "text/css", "text/javascript" }.Contains(contentType)))
+            {
+                httpResponse.Bytes = contentBytes;
+                return httpResponse;
+            }
+
             if (response.Content.Headers.ContentEncoding.Contains("gzip"))
             {
                 using (var stream = new System.IO.Compression.GZipStream(new MemoryStream(contentBytes), CompressionMode.Decompress))
@@ -180,7 +189,8 @@ namespace SampleReverseProxy.Client3
 
             responseContent = Regex.Replace(responseContent, TargetApplicationUri.Authority, "localhost:7200");
 
-            return Encoding.UTF8.GetBytes(responseContent);
+            httpResponse.Bytes = Encoding.UTF8.GetBytes(responseContent);
+            return httpResponse;
             //return await response.Content.ReadAsStringAsync();
         }
 
