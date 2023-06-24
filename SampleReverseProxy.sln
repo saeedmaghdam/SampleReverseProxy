@@ -9,9 +9,13 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SampleReverseProxy.Server",
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SampleReverseProxy.Client", "SampleReverseProxy.Client\SampleReverseProxy.Client.csproj", "{8598703C-A942-4223-9DCD-4198D3C6630D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleReverseProxy.Client2", "SampleReverseProxy.Client2\SampleReverseProxy.Client2.csproj", "{3EB28684-DE47-49ED-9BDB-537525B2798B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SampleReverseProxy.Client2", "SampleReverseProxy.Client2\SampleReverseProxy.Client2.csproj", "{3EB28684-DE47-49ED-9BDB-537525B2798B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleReverseProxy.Server2", "SampleReverseProxy.Server2\SampleReverseProxy.Server2.csproj", "{EE4F350E-0639-4552-9F5C-715272584A6D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SampleReverseProxy.Server2", "SampleReverseProxy.Server2\SampleReverseProxy.Server2.csproj", "{EE4F350E-0639-4552-9F5C-715272584A6D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleReverseProxy.Server3", "SampleReverseProxy.Server3\SampleReverseProxy.Server3.csproj", "{08F13A54-BA38-4B3B-A281-725A43CE728E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleReverseProxy.Client3", "SampleReverseProxy.Client3\SampleReverseProxy.Client3.csproj", "{10B157ED-FF57-4698-A189-30922673408E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +43,14 @@ Global
 		{EE4F350E-0639-4552-9F5C-715272584A6D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EE4F350E-0639-4552-9F5C-715272584A6D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EE4F350E-0639-4552-9F5C-715272584A6D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{08F13A54-BA38-4B3B-A281-725A43CE728E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{08F13A54-BA38-4B3B-A281-725A43CE728E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{08F13A54-BA38-4B3B-A281-725A43CE728E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{08F13A54-BA38-4B3B-A281-725A43CE728E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{10B157ED-FF57-4698-A189-30922673408E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{10B157ED-FF57-4698-A189-30922673408E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{10B157ED-FF57-4698-A189-30922673408E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{10B157ED-FF57-4698-A189-30922673408E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
